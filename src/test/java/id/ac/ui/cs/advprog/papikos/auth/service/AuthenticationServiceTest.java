@@ -20,6 +20,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -137,17 +138,34 @@ class AuthenticationServiceTest {
 
     @Test
     void login_Success() {
-        Authentication authentication = mock(Authentication.class);
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
-        when(jwtTokenProvider.generateToken(authentication)).thenReturn("jwtToken");
+        // Arrange
+        Authentication successfulAuthentication = mock(Authentication.class); // This is what manager.authenticate returns
+        UsernamePasswordAuthenticationToken inputToken = new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword());
+
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))) // Use any() or specific matcher
+                .thenReturn(successfulAuthentication);
+
+        when(jwtTokenProvider.generateToken(successfulAuthentication)).thenReturn("jwtToken");
         when(userRepository.findByEmail(loginRequest.getEmail())).thenReturn(Optional.of(tenantUser));
 
+        // Mock SecurityContext
+        SecurityContext securityContext = mock(SecurityContext.class);
+        SecurityContext originalContext = SecurityContextHolder.getContext(); // Store original context
+        SecurityContextHolder.setContext(securityContext); // Set the mocked context
+
+        // Act
         LoginResponse result = authenticationService.login(loginRequest);
 
+        // Assert
         assertNotNull(result);
         assertEquals("jwtToken", result.getAccessToken());
         assertEquals(tenantUser.getEmail(), result.getUser().getEmail());
-        verify(SecurityContextHolder.getContext()).setAuthentication(authentication);
+        
+        // Verify that setAuthentication was called on our mocked SecurityContext
+        verify(securityContext).setAuthentication(successfulAuthentication);
+
+        // Clean up: restore original context
+        SecurityContextHolder.setContext(originalContext);
     }
 
     @Test
