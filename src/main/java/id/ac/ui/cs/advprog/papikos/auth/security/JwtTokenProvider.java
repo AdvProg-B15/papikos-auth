@@ -19,10 +19,10 @@ import java.util.stream.Collectors;
 @Component
 public class JwtTokenProvider {
 
-    @Value("${app.jwtSecret}")
+    @Value("${app.jwt-secret}")
     private String jwtSecret;
 
-    @Value("${app.jwtExpirationInMs}")
+    @Value("${app.jwt-expiration-in-ms}")
     private int jwtExpirationInMs;
 
     private Key getSigningKey() {

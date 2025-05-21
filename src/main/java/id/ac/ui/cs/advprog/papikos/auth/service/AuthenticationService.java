@@ -85,10 +85,10 @@ public class AuthenticationService {
             // Admin does not have a UUID in the User table, so pass null for userId
             String token = jwtTokenProvider.generateToken(adminDetails, null);
             UserDto adminDto = UserDto.builder()
-                                .email(adminEmail)
-                                .role(Role.ADMIN)
-                                .status(UserStatus.ACTIVE)
-                                .build();
+                    .email(adminEmail)
+                    .role(Role.ADMIN)
+                    .status(UserStatus.ACTIVE)
+                    .build();
             return new LoginResponse(token, "Bearer", adminDto);
         }
 
@@ -124,20 +124,21 @@ public class AuthenticationService {
     public UserDto getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
-             throw new RuntimeException("No authenticated user found");
+            throw new RuntimeException("No authenticated user found");
         }
         String currentUsername = authentication.getName();
 
         if (currentUsername.equals(adminEmail)) {
-             // Check if the principal's authorities match ADMIN role for safety
+            // Check if the principal's authorities match ADMIN role for safety
             boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_" + Role.ADMIN.name()));
+                    .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_" + Role.ADMIN.name()));
             if (isAdmin) {
                 return UserDto.builder()
-                    .email(adminEmail)
-                    .role(Role.ADMIN)
-                    .status(UserStatus.ACTIVE)
-                    .build();
+                        .userId(UUID.fromString("00000000-0000-0000-0000-000000000000")) // Placeholder for admin UUID
+                        .email(adminEmail)
+                        .role(Role.ADMIN)
+                        .status(UserStatus.ACTIVE)
+                        .build();
             }
         }
         User user = userRepository.findByEmail(currentUsername)
@@ -160,9 +161,9 @@ public class AuthenticationService {
 
     public List<UserDto> getInternalUsersByIds(String ids) {
         List<UUID> uuidList = Arrays.stream(ids.split(","))
-                                .map(String::trim)
-                                .map(UUID::fromString)
-                                .collect(Collectors.toList());
+                .map(String::trim)
+                .map(UUID::fromString)
+                .collect(Collectors.toList());
         return userRepository.findAllById(uuidList)
                 .stream()
                 .map(this::mapToUserDto)
