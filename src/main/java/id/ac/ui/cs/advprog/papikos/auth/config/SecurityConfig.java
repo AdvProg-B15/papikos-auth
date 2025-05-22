@@ -9,6 +9,7 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,28 +21,26 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    private final CustomUserDetailsService customUserDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter; // Inject
 
-    public SecurityConfig(CustomUserDetailsService customUserDetailsService,
-                          JwtAuthenticationFilter jwtAuthenticationFilter) { // Add to constructor
-        this.customUserDetailsService = customUserDetailsService;
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter) { // Add to constructor
         this.jwtAuthenticationFilter = jwtAuthenticationFilter; // Initialize
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/health").permitAll()
-                .requestMatchers("/register/tenant", "/register/owner", "/login").permitAll()
-                .requestMatchers("/auth/verify-internal").permitAll()
-                // .requestMatchers("/users/**/internal", "/users/internal").permitAll() // Review security for internal endpoints
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class); // Add JWT filter
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/api/v1/health").permitAll()
+                        .requestMatchers("/api/v1/register/tenant", "/api/v1/register/owner", "/api/v1/login").permitAll()
+                        .requestMatchers("/api/v1/auth/verify-internal").permitAll()
+                        // .requestMatchers("/api/v1/users/**/internal", "/api/v1/users/internal").permitAll() // Review security for internal endpoints
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class); // Add JWT filter
 
         return http.build();
     }
