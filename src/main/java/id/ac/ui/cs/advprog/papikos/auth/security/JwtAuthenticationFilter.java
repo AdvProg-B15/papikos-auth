@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -51,13 +50,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 UserDetails userDetails;
 
-                if (userId != null) { // Regular user token with UUID in subject
+                if (userId != null) {
                     try {
                         userDetails = customUserDetailsService.loadUserById(userId);
-                        // Optional: Verify if email from token matches email from loaded UserDetails for consistency
                         if (!email.equals(userDetails.getUsername())) {
                             logger.warn("Email mismatch between JWT ({}) and loaded UserDetails ({}) for userId {}", email, userDetails.getUsername(), userId);
-                            // Decide handling: proceed, or reject if strict matching is required
                         }
                     } catch (UsernameNotFoundException ex) {
                         logger.error("User ID {} from JWT not found in database.", userId, ex);
@@ -65,10 +62,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         filterChain.doFilter(request, response);
                         return;
                     }
-                } else { // Subject is not a UUID, potentially an admin token (subject is email)
+                } else {
                     boolean isAdminByRole = authorities.stream()
                             .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
-                    // Ensure email is present and matches the subject if it's an admin token
                     String subject = tokenProvider.getSubjectFromJWT(jwt);
                     if (isAdminByRole && email != null && email.equals(subject)) {
                         userDetails = new org.springframework.security.core.userdetails.User(
