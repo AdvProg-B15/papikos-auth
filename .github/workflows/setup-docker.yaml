@@ -1,18 +1,26 @@
 name: Build and Push to Artifact Registry
-
 on:
   push:
-    branches: ["main"]
-    tags: [ 'v*.*.*' ]
+    tags: [ 'v*.*.*' ]  # Only build on version tags
   pull_request:
-    branches: ["main"]
+    branches: ["main"]  # Build for testing but don't push
+
+env:
+  REGISTRY: asia-southeast1-docker.pkg.dev
+  PROJECT_ID: belajar-kube-457207
+  REPOSITORY: papikos-repository
+  IMAGE_NAME: papikos-auth
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -21,7 +29,7 @@ jobs:
 
       - name: Configure Docker for Artifact Registry
         run: |
-          gcloud auth configure-docker asia-southeast1-docker.pkg.dev
+          gcloud auth configure-docker ${{ env.REGISTRY }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -29,11 +37,145 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          platforms: linux/amd64
-          push: true
+          images: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}
           tags: |
-            asia-southeast1-docker.pkg.dev/belajar-kube-457207/papikos-repository/papikos-auth:latest
+            # Only version tags for production
+            type=ref,event=tag
+            # PR tags for testing (not pushed in PR context)
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.description=Papikos Authentication Service
 
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          # Only push on tag events, not PRs
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  update-config:
+    needs: docker
+    runs-on: ubuntu-latest
+    # Only run on tag pushes (production releases)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: AdvProg-B15/papikos-config
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+          path: config-repo
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update values.yaml with yq
+        run: |
+          cd config-repo/papikos-app
+          
+          # Install yq
+          echo "Installing yq..."
+          wget -qO /tmp/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          chmod +x /tmp/yq
+          
+          # Create backup
+          cp values.yaml values.yaml.backup
+          
+          # Get current tag for comparison
+          CURRENT_TAG=$(/tmp/yq eval '.auth.image.tag' values.yaml)
+          NEW_TAG="${{ steps.version.outputs.version }}"
+          
+          echo "=== Image Tag Update ==="
+          echo "Current tag: $CURRENT_TAG"
+          echo "New tag: $NEW_TAG"
+          
+          # Check if update is needed
+          if [ "$CURRENT_TAG" = "$NEW_TAG" ]; then
+            echo "⚠️ Tag is already up to date, skipping update"
+            rm values.yaml.backup
+            exit 0
+          fi
+          
+          # Update auth service image tag
+          /tmp/yq eval '.auth.image.tag = "'$NEW_TAG'"' -i values.yaml
+          
+          # Verify the change was applied
+          UPDATED_TAG=$(/tmp/yq eval '.auth.image.tag' values.yaml)
+          if [ "$UPDATED_TAG" != "$NEW_TAG" ]; then
+            echo "Failed to update tag! Expected: $NEW_TAG, Got: $UPDATED_TAG"
+            exit 1
+          fi
+          
+          echo "Successfully updated auth service tag to: $UPDATED_TAG"
+          
+          # Show the auth service configuration
+          echo "=== Updated Auth Service Configuration ==="
+          /tmp/yq eval '.auth.image' values.yaml
+          
+          # Show the diff
+          echo "=== Changes Made ==="
+          if diff values.yaml.backup values.yaml; then
+            echo "No changes detected in diff - this shouldn't happen!"
+            exit 1
+          else
+            echo "Changes applied successfully"
+            # Show specific changes
+            echo "--- Detailed Changes ---"
+            diff -u values.yaml.backup values.yaml || true
+          fi
+          
+          # Cleanup backup
+          rm values.yaml.backup
+
+      - name: Create Pull Request for Production Release
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+          path: config-repo
+          commit-message: "Release: Update auth service to ${{ steps.version.outputs.version }}"
+          title: "Production Release: Auth Service ${{ steps.version.outputs.version }}"
+          body: |
+            ## Production Release: Auth Service ${{ steps.version.outputs.version }}
+
+            This PR updates the auth service for production deployment.
+
+            **Changes:**
+            - Auth service image tag: `${{ steps.version.outputs.version }}`
+            - Source repository: ${{ github.repository }}
+            - Source commit: [`${{ github.sha }}`](${{ github.event.repository.html_url }}/commit/${{ github.sha }})
+            - Build run: [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            **Build Information:**
+            - Image: `${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}`
+            - Platform: `linux/amd64`
+            - Built at: `${{ github.event.head_commit.timestamp }}`
+
+            **Production Deployment**
+            Please review carefully before merging. ArgoCD will automatically deploy once merged.
+
+            **Pre-deployment Checklist:**
+            - [x] Image built successfully
+            - [x] Image pushed to registry
+            - [ ] Security review completed
+            - [ ] Breaking changes reviewed
+            - [ ] Ready for production deployment
+
+            **Rollback Plan:**
+            If issues occur, you can quickly rollback by reverting this PR or updating the image tag manually.
+          branch: release/auth-${{ steps.version.outputs.version }}
+          delete-branch: true
+          draft: false
