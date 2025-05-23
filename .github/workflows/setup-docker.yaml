@@ -35,5 +35,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            asia-southeast1-docker.pkg.dev/belajar-kube-457207/papikos-repository/papikos-fe:latest
+            asia-southeast1-docker.pkg.dev/belajar-kube-457207/papikos-repository/papikos-auth:latest
 
