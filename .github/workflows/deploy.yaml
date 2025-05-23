@@ -248,6 +248,3 @@ jobs:
           # peter-evans/create-pull-request will not create a PR if there are no file changes.
           # This handles the case where NO_YQ_CHANGES_MARKER was set (or rather, yq made no changes).
 
-      - name: Output PR URL
-        if: steps.cpr.outputs.pull-request-url != ''
-        run: echo "Pull Request URL: ${{ steps.cpr.outputs.pull-request-url }}"
