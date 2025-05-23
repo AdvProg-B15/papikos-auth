@@ -164,9 +164,11 @@ public class AuthenticationController {
     @PostMapping("/verify")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Object>> verifyInternalToken() {
+        UserDto userDto = authenticationService.getCurrentUser();
         ApiResponse<Object> response = ApiResponse.builder()
                 .status(HttpStatus.OK)
                 .message("Token is valid")
+                .data(userDto)
                 .build();
         return ResponseEntity.ok(response);
     }

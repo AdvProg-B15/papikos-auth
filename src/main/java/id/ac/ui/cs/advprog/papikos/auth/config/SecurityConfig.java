@@ -35,7 +35,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/v1/health").permitAll()
-                        .requestMatchers("/api/v1/register/tenant", "/api/v1/register/owner", "/api/v1/login").permitAll()
+                        .requestMatchers("/api/v1/owner/new", "/api/v1/tenant/new", "/api/v1/login").permitAll()
                         .requestMatchers("/api/v1/auth/verify-internal").permitAll()
                         // .requestMatchers("/api/v1/users/**/internal", "/api/v1/users/internal").permitAll() // Review security for internal endpoints
                         .anyRequest().authenticated()
